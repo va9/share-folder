@@ -92,19 +92,22 @@ export default class Note {
     }
 
     // Create a semi-permanent status notice which we can update
-    this.status = new StatusMessage('If this message is showing, please do not change to another note as the current note data is still being parsed.', StatusType.Default, 60 * 1000)
+    this.status = new StatusMessage('Please do not change to another note as the current note data is still being parsed.', StatusType.Default, 60 * 1000)
 
+    // Switch to reading mode
     const startMode = this.leaf.getViewState()
     const previewMode = this.leaf.getViewState()
     if (previewMode.state) {
       previewMode.state.mode = 'preview'
     }
     await this.leaf.setViewState(previewMode)
-    await new Promise(resolve => setTimeout(resolve, 40))
+    // Add a delay to wait for reading mode to finalise rendering - https://github.com/alangrainger/share-note/discussions/162#discussioncomment-15394971
+    await new Promise(resolve => setTimeout(resolve, 600))
+
     // Scroll the view to the top to ensure we get the default margins for .markdown-preview-pusher
     // @ts-ignore
     this.leaf.view.previewMode.applyScroll(0) // 'view.previewMode'
-    await new Promise(resolve => setTimeout(resolve, 40))
+    await new Promise(resolve => setTimeout(resolve, 100))
     try {
       const view = this.leaf.view as ViewModes
       const renderer = view.modes.preview.renderer
