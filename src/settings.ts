@@ -1,63 +1,40 @@
 import { App, PluginSettingTab, Setting, TextComponent } from 'obsidian'
 import SharePlugin from './main'
 
-export enum ThemeMode {
-  'Same as theme',
-  Dark,
-  Light
-}
-
-export enum TitleSource {
-  'Note title',
-  'First H1',
-  'Frontmatter property'
-}
-
-export enum YamlField {
-  link,
-  updated,
-  encrypted,
-  unencrypted,
-  title,
-  expires
+export interface PublishedSite {
+  slug: string;
+  url: string;
+  title: string;
+  updatedAt: number;
+  encrypted: boolean;
 }
 
 export interface ShareSettings {
   server: string;
   uid: string;
   apiKey: string;
-  yamlField: string;
-  noteWidth: string;
-  theme: string; // The name of the theme stored on the server
-  themeMode: ThemeMode;
-  titleSource: TitleSource;
-  removeYaml: boolean;
-  removeBacklinksFooter: boolean;
-  removeElements: string;
-  expiry: string;
-  clipboard: boolean;
-  shareUnencrypted: boolean;
-  authRedirect: string | null;
-  debug: number;
+  // Site publishing settings
+  siteDefaultFolder: string;
+  siteTitle: string;
+  siteVanitySlug: string;
+  siteEncrypted: boolean;
+  siteEncryptionKeys: Record<string, string>;
+  siteExpiry: string;
+  // Published sites: folder path → site info
+  publishedSites: Record<string, PublishedSite>;
 }
 
 export const DEFAULT_SETTINGS: ShareSettings = {
-  server: 'https://api.note.sx',
+  server: 'https://obsidian-publish.fly.dev',
   uid: '',
   apiKey: '',
-  yamlField: 'share',
-  noteWidth: '',
-  theme: '',
-  themeMode: ThemeMode['Same as theme'],
-  titleSource: TitleSource['Note title'],
-  removeYaml: true,
-  removeBacklinksFooter: true,
-  removeElements: '',
-  expiry: '',
-  clipboard: true,
-  shareUnencrypted: false,
-  authRedirect: null,
-  debug: 0
+  siteDefaultFolder: '',
+  siteTitle: '',
+  siteVanitySlug: '',
+  siteEncrypted: false,
+  siteEncryptionKeys: {},
+  siteExpiry: '',
+  publishedSites: {}
 }
 
 export class ShareSettingsTab extends PluginSettingTab {
@@ -85,7 +62,7 @@ export class ShareSettingsTab extends PluginSettingTab {
           window.open(this.plugin.settings.server + '/v1/account/get-key?id=' + this.plugin.settings.uid)
         }))
       .addText(inputEl => {
-        this.apikeyEl = inputEl // so we can update it with the API key during the URI callback
+        this.apikeyEl = inputEl
         inputEl
           .setPlaceholder('API key')
           .setValue(this.plugin.settings.apiKey)
@@ -95,166 +72,128 @@ export class ShareSettingsTab extends PluginSettingTab {
           })
       })
 
-    // Local YAML field
+    // Site publishing section
     new Setting(containerEl)
-      .setName('Frontmatter property prefix')
-      .setDesc('The frontmatter property for storing the shared link and updated time. A value of `share` will create frontmatter fields of `share_link` and `share_updated`.')
+      .setName('Site publishing')
+      .setHeading()
+
+    new Setting(containerEl)
+      .setName('Default folder')
+      .setDesc('The default folder to publish as a site. Leave empty to choose each time.')
       .addText(text => text
-        .setPlaceholder(DEFAULT_SETTINGS.yamlField)
-        .setValue(this.plugin.settings.yamlField)
+        .setPlaceholder('e.g., publish')
+        .setValue(this.plugin.settings.siteDefaultFolder)
         .onChange(async (value) => {
-          this.plugin.settings.yamlField = value || DEFAULT_SETTINGS.yamlField
+          this.plugin.settings.siteDefaultFolder = value
           await this.plugin.saveSettings()
         }))
 
     new Setting(containerEl)
-      .setName('Upload options')
-      .setHeading()
+      .setName('Site title')
+      .setDesc('The title for your published site. Defaults to the folder name if empty.')
+      .addText(text => text
+        .setPlaceholder('My Knowledge Base')
+        .setValue(this.plugin.settings.siteTitle)
+        .onChange(async (value) => {
+          this.plugin.settings.siteTitle = value
+          await this.plugin.saveSettings()
+        }))
 
-    new Setting(containerEl)
-      .setName(`⭐ Your shared note theme is "${this.plugin.settings.theme || 'Obsidian default theme'}"`)
-      .setDesc('To set a new theme, change the theme in Obsidian to your desired theme and then use the `Force re-upload all data` command. You can change your Obsidian theme after that without affecting the theme for your shared notes.')
-      .then(setting => addDocs(setting, 'https://docs.note.sx/notes/theme'))
+    const prefix = this.plugin.settings.uid ? this.plugin.settings.uid.slice(0, 8) : '????????'
+    const vanitySetting = new Setting(containerEl)
+      .setName('Vanity URL')
+      .setDesc(`Your sites are at /s/${prefix}/<folder>/. Set a vanity slug to use /s/<vanity>/<folder>/ instead.`)
 
-    // Choose light/dark theme mode
-    new Setting(containerEl)
-      .setName('Light/Dark mode')
-      .setDesc('Choose the mode with which your files will be shared')
-      .addDropdown(dropdown => {
-        dropdown
-          .addOption('Same as theme', 'Same as theme')
-          .addOption('Dark', 'Dark')
-          .addOption('Light', 'Light')
-          .setValue(ThemeMode[this.plugin.settings.themeMode])
-          .onChange(async value => {
-            this.plugin.settings.themeMode = ThemeMode[value as keyof typeof ThemeMode]
-            await this.plugin.saveSettings()
-          })
-      })
+    let vanityCheckTimeout: ReturnType<typeof setTimeout> | null = null
+    vanitySetting.addText(text => text
+      .setPlaceholder('my-name')
+      .setValue(this.plugin.settings.siteVanitySlug)
+      .onChange(async (value) => {
+        const cleaned = value.toLowerCase().replace(/[^a-z0-9-]/g, '')
+        this.plugin.settings.siteVanitySlug = cleaned
+        await this.plugin.saveSettings()
 
-    // Copy to clipboard
-    new Setting(containerEl)
-      .setName('Copy the link to clipboard after sharing')
-      .addToggle(toggle => {
-        toggle
-          .setValue(this.plugin.settings.clipboard)
-          .onChange(async (value) => {
-            this.plugin.settings.clipboard = value
-            await this.plugin.saveSettings()
-          })
-      })
-
-    new Setting(containerEl)
-      .setName('Note options')
-      .setHeading()
-
-    // Title source
-    const defaultTitleDesc = 'Select the location to source the published note title. It will default to the note title if nothing is found for the selected option.'
-    const titleSetting = new Setting(containerEl)
-      .setName('Note title source')
-      .setDesc(defaultTitleDesc)
-      .addDropdown(dropdown => {
-        for (const enumKey in TitleSource) {
-          if (isNaN(Number(enumKey))) {
-            dropdown.addOption(enumKey, enumKey)
-          }
+        // Debounced availability check
+        if (vanityCheckTimeout) clearTimeout(vanityCheckTimeout)
+        if (!cleaned) {
+          vanitySetting.setDesc(`Your sites are at /s/${prefix}/<folder>/. Set a vanity slug to use /s/<vanity>/<folder>/ instead.`)
+          return
         }
-        dropdown
-          .setValue(TitleSource[this.plugin.settings.titleSource])
-          .onChange(async value => {
-            this.plugin.settings.titleSource = TitleSource[value as keyof typeof TitleSource]
-            if (this.plugin.settings.titleSource === TitleSource['Frontmatter property']) {
-              titleSetting.setDesc('Set the title you want to use in a frontmatter property called `' + this.plugin.field(YamlField.title) + '`')
+        vanityCheckTimeout = setTimeout(async () => {
+          try {
+            const result = await this.plugin.api.checkVanitySlug(cleaned)
+            if (result.available) {
+              vanitySetting.setDesc(`Your sites will be at /s/${cleaned}/<folder>/`)
             } else {
-              titleSetting.setDesc(defaultTitleDesc)
+              vanitySetting.setDesc(result.error || 'This vanity slug is already taken.')
             }
-            await this.plugin.saveSettings()
-          })
-      })
+          } catch {
+            vanitySetting.setDesc('Could not check availability.')
+          }
+        }, 500)
+      }))
 
-    // Note reading width
     new Setting(containerEl)
-      .setName('Note reading width')
-      .setDesc('The max width for the content of your shared note, accepts any CSS unit. Leave this value empty if you want to use the theme\'s width.')
-      .addText(text => text
-        .setValue(this.plugin.settings.noteWidth)
+      .setName('Encryption')
+      .setDesc('Encrypt site content when publishing to server. Does not apply to local HTML export. The decryption key is included in the URL fragment.')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.siteEncrypted)
         .onChange(async (value) => {
-          this.plugin.settings.noteWidth = value
+          this.plugin.settings.siteEncrypted = value
           await this.plugin.saveSettings()
         }))
 
-    // Strip frontmatter
     new Setting(containerEl)
-      .setName('Remove published frontmatter/YAML')
-      .setDesc('Remove frontmatter/YAML/properties from the shared note')
-      .addToggle(toggle => {
-        toggle
-          .setValue(this.plugin.settings.removeYaml)
-          .onChange(async (value) => {
-            this.plugin.settings.removeYaml = value
-            await this.plugin.saveSettings()
-          })
-      })
-
-    // Strip backlinks footer
-    new Setting(containerEl)
-      .setName('Remove backlinks footer')
-      .setDesc('Remove backlinks footer from the shared note')
-      .addToggle(toggle => {
-        toggle
-          .setValue(this.plugin.settings.removeBacklinksFooter)
-          .onChange(async (value) => {
-            this.plugin.settings.removeBacklinksFooter = value
-            await this.plugin.saveSettings()
-          })
-      })
-
-    // Strip elements by selector
-    new Setting(containerEl)
-      .setName('Remove custom elements')
-      .setDesc('Remove elements before sharing by targeting them with CSS selectors. One selector per line.')
-      .addTextArea(text => {
-        text
-          .setPlaceholder('div.class-to-remove')
-          .setValue(this.plugin.settings.removeElements)
-          .onChange(async (value) => {
-            this.plugin.settings.removeElements = value
-            await this.plugin.saveSettings()
-          })
-      })
-
-    // Share encrypted by default
-    new Setting(containerEl)
-      .setName('Share as encrypted by default')
-      .setDesc('If you turn this off, you can enable encryption for individual notes by adding a `share_encrypted` checkbox into a note and ticking it.')
-      .addToggle(toggle => {
-        toggle
-          .setValue(!this.plugin.settings.shareUnencrypted)
-          .onChange(async (value) => {
-            this.plugin.settings.shareUnencrypted = !value
-            await this.plugin.saveSettings()
-          })
-      })
-      .then(setting => addDocs(setting, 'https://docs.note.sx/notes/encryption'))
-
-    // Default note expiry
-    new Setting(containerEl)
-      .setName('Default note expiry')
-      .setDesc('If you want, your notes can auto-delete themselves after a period of time. You can set this as a default for all notes here, or you can set it on a per-note basis.')
-      .addText(text => text
-        .setValue(this.plugin.settings.expiry)
+      .setName('Expiry')
+      .setDesc('Automatically delete the published site after this duration. Re-publishing resets the timer.')
+      .addDropdown(dropdown => dropdown
+        .addOption('', 'Never')
+        .addOption('1 day', '1 day')
+        .addOption('7 days', '7 days')
+        .addOption('30 days', '30 days')
+        .addOption('90 days', '90 days')
+        .setValue(this.plugin.settings.siteExpiry)
         .onChange(async (value) => {
-          this.plugin.settings.expiry = value
+          this.plugin.settings.siteExpiry = value
           await this.plugin.saveSettings()
         }))
-      .then(setting => addDocs(setting, 'https://docs.note.sx/notes/self-deleting-notes'))
+
+    // Published sites section
+    const sites = this.plugin.settings.publishedSites
+    if (Object.keys(sites).length > 0) {
+      new Setting(containerEl)
+        .setName('Published sites')
+        .setHeading()
+
+      for (const [folderPath, site] of Object.entries(sites)) {
+        new Setting(containerEl)
+          .setName(site.title || folderPath)
+          .setDesc(site.url)
+          .addButton(btn => btn
+            .setButtonText('Open')
+            .onClick(() => {
+              // @ts-ignore
+              require('electron').shell.openExternal(site.url)
+            }))
+          .addButton(btn => btn
+            .setButtonText('Copy URL')
+            .onClick(async () => {
+              await navigator.clipboard.writeText(site.url)
+            }))
+          .addButton(btn => btn
+            .setButtonText('Delete')
+            .setWarning()
+            .onClick(async () => {
+              try {
+                await this.plugin.api.deleteSite(site.slug)
+                delete this.plugin.settings.publishedSites[folderPath]
+                await this.plugin.saveSettings()
+                this.display() // refresh UI
+              } catch (e) {
+                console.error('Failed to delete site:', e)
+              }
+            }))
+      }
+    }
   }
-}
-
-function addDocs (setting: Setting, url: string) {
-  setting.descEl.createEl('br')
-  setting.descEl.createEl('a', {
-    text: 'View the documentation',
-    href: url
-  })
 }

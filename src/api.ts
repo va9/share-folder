@@ -1,54 +1,27 @@
 import { requestUrl } from 'obsidian'
 import SharePlugin from './main'
 import StatusMessage, { StatusType } from './StatusMessage'
-import { sha1, sha256 } from './crypto'
-import NoteTemplate from './NoteTemplate'
-import { SharedUrl } from './note'
-import { compressImage } from './Compressor'
+import { sha256 } from './crypto'
 
 const pluginVersion = require('../manifest.json').version
 
-export interface FileUpload {
+export interface SiteFileUpload {
+  path: string
+  content: string
   filetype: string
-  hash: string
-  content?: ArrayBuffer | string
-  byteLength: number
-  expiration?: number
-  url?: string | null
+  base64?: boolean
 }
 
-export type PostData = {
-  files?: FileUpload[]
-  filename?: string
-  filetype?: string
-  hash?: string
-  byteLength?: number
-  expiration?: number
-  template?: NoteTemplate
-  debug?: number
-}
-
-export interface UploadQueueItem {
-  data: FileUpload
-  callback: (url: string) => void
-}
-
-export interface CheckFilesResult {
+export interface PublishSiteResult {
   success: boolean
-  files: FileUpload[]
-  css?: {
-    url: string
-    hash: string
-  }
+  url: string
 }
 
 export default class API {
   plugin: SharePlugin
-  uploadQueue: UploadQueueItem[]
 
   constructor (plugin: SharePlugin) {
     this.plugin = plugin
-    this.uploadQueue = []
   }
 
   async authHeaders () {
@@ -61,175 +34,90 @@ export default class API {
     }
   }
 
-  async post (endpoint: string, data?: PostData, retries = 1) {
+  async post (endpoint: string, data?: any, retries = 1) {
     const headers: HeadersInit = {
       ...(await this.authHeaders()),
       'Content-Type': 'application/json'
     }
-    if (data?.byteLength) headers['x-sharenote-bytelength'] = data.byteLength.toString()
-    const body = Object.assign({}, data)
-    if (this.plugin.settings.debug) body.debug = this.plugin.settings.debug
 
-    // Upload the data
     while (retries > 0) {
       try {
         const res = await requestUrl({
           url: this.plugin.settings.server + endpoint,
           method: 'POST',
           headers,
-          body: JSON.stringify(body)
+          body: JSON.stringify(data)
         })
-        if (this.plugin.settings.debug === 1 && data?.filetype === 'html') {
-          // Debugging option
-          console.log(res.json.html)
-        }
         return res.json
       } catch (error) {
         if (error.status < 500 || retries <= 1) {
           const message = error.headers?.message
           if (message) {
             new StatusMessage(message, StatusType.Error)
-            if (error.status === 462) {
-              // Invalid API key, request a new one
-              this.plugin.authRedirect('share').then()
-            }
             throw new Error('Known error')
           }
           throw new Error('Unknown error')
         } else {
-          // Delay before attempting to retry upload
           await new Promise(resolve => setTimeout(resolve, 1000))
         }
       }
-      console.log('Retrying ' + retries)
       retries--
     }
   }
 
-  async postRaw (endpoint: string, data: FileUpload, retries = 4) {
-    const headers: HeadersInit = {
-      ...(await this.authHeaders()),
-      'x-sharenote-filetype': data.filetype,
-      'x-sharenote-hash': data.hash
-    }
-    if (data.byteLength) headers['x-sharenote-bytelength'] = data.byteLength.toString()
-    while (retries > 0) {
-      const res = await fetch(this.plugin.settings.server + endpoint, {
-        method: 'POST',
-        headers,
-        body: data.content
-      })
-      if (res.status !== 200) {
-        if (res.status < 500 || retries <= 1) {
-          const message = await res.text()
-          if (message) {
-            new StatusMessage(message, StatusType.Error)
-            throw new Error('Known error')
-          }
-          throw new Error('Unknown error')
-        }
-        // Delay before attempting to retry upload
-        await new Promise(resolve => setTimeout(resolve, 1000))
-      } else {
-        return res.json()
-      }
-      console.log('Retrying ' + retries)
-      retries--
-    }
+  /**
+   * Publish a complete site (folder) to the server.
+   * Uploads files in batches to avoid oversized requests.
+   */
+  async checkVanitySlug (vanitySlug: string): Promise<{ available: boolean; error?: string }> {
+    return await this.post('/v1/site/check-vanity', { vanitySlug })
   }
 
-  async queueUpload (item: UploadQueueItem) {
-    // Compress the data if possible
-    if (item.data.content) {
-      const compressed = await compressImage(item.data.content as ArrayBuffer, item.data.filetype)
-      if (compressed.changed) {
-        item.data.content = compressed.data
-        item.data.filetype = compressed.filetype
-      }
-    }
-    this.uploadQueue.push(item)
+  async deleteSite (slug: string): Promise<void> {
+    await this.post('/v1/site/delete', { slug })
   }
 
-  async processQueue (status: StatusMessage, type = 'attachment') {
-    // Check with the server to find which files need to be updated
-    const res = await this.post('/v1/file/check-files', {
-      files: this.uploadQueue.map(x => {
-        return {
-          hash: x.data.hash,
-          filetype: x.data.filetype,
-          byteLength: x.data.byteLength
-        }
-      })
-    }) as CheckFilesResult
+  async publishSite (
+    slug: string,
+    title: string,
+    files: SiteFileUpload[],
+    options?: {
+      prefix?: string
+      vanitySlug?: string
+      encrypted?: boolean
+      expiryDuration?: string
+    },
+    onProgress?: (current: number, total: number) => void
+  ): Promise<PublishSiteResult | undefined> {
+    const batchSize = 20
+    const totalFiles = files.length
 
-    let count = 1
-    const promises: Promise<void>[] = []
-    for (const queueItem of this.uploadQueue) {
-      // Get the result from check-files (if exists)
-      const checkFile = res?.files.find((item: FileUpload) => item.hash === queueItem.data.hash && item.filetype === queueItem.data.filetype)
-      if (checkFile?.url) {
-        // File is already uploaded, just process the callback
-        status.setStatus(`Uploading ${type} ${count++} of ${this.uploadQueue.length}...`)
-        queueItem.callback(checkFile.url)
-      } else {
-        // File needs to be uploaded
-        promises.push(new Promise(resolve => {
-          this.postRaw('/v1/file/upload', queueItem.data)
-            .then((res) => {
-              // Process the callback
-              status.setStatus(`Uploading ${type} ${count++} of ${this.uploadQueue.length}...`)
-              queueItem.callback(res.url)
-              resolve()
-            })
-            .catch((e) => {
-              console.log(e)
-              resolve()
-            })
-        }))
+    for (let i = 0; i < totalFiles; i += batchSize) {
+      const batch = files.slice(i, i + batchSize)
+      const isFirst = i === 0
+      const isLast = i + batchSize >= totalFiles
+
+      const res = await this.post('/v1/site/publish', {
+        slug,
+        title,
+        siteFiles: batch,
+        batchIndex: Math.floor(i / batchSize),
+        isFirstBatch: isFirst,
+        isLastBatch: isLast,
+        totalFiles,
+        prefix: options?.prefix,
+        vanitySlug: options?.vanitySlug || undefined,
+        encrypted: options?.encrypted || false,
+        expiryDuration: options?.expiryDuration || ''
+      }, 3)
+
+      if (onProgress) {
+        onProgress(Math.min(i + batchSize, totalFiles), totalFiles)
+      }
+
+      if (isLast && res) {
+        return res as PublishSiteResult
       }
     }
-    await Promise.all(promises)
-    this.uploadQueue = []
-
-    return res
   }
-
-  async upload (data: FileUpload) {
-    const res = await this.postRaw('/v1/file/upload', data)
-    return res.url
-  }
-
-  async createNote (template: NoteTemplate, expiration?: number) {
-    const res = await this.post('/v1/file/create-note', {
-      filename: template.filename,
-      filetype: 'html',
-      hash: await sha1(template.content),
-      expiration,
-      template
-    }, 3)
-    return res.url
-  }
-
-  async deleteSharedNote (shareUrl: string) {
-    const url = parseExistingShareUrl(shareUrl)
-    if (url) {
-      await this.post('/v1/file/delete', {
-        filename: url.filename,
-        filetype: 'html'
-      })
-      new StatusMessage('The note has been deleted 🗑️', StatusType.Info)
-    }
-  }
-}
-
-export function parseExistingShareUrl (url: string): SharedUrl | false {
-  const match = url.match(/(\w+)(#.+?|)$/)
-  if (match) {
-    return {
-      filename: match[1],
-      decryptionKey: match[2].slice(1) || '',
-      url
-    }
-  }
-  return false
 }

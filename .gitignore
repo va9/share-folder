@@ -24,3 +24,6 @@ data.json
 test
 docs/.sass-cache/
 docs/_site/
+
+# Server build output
+app/dist/
