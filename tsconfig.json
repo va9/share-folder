@@ -20,6 +20,9 @@
     ]
   },
   "include": [
-    "**/*.ts"
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "app"
   ]
 }
