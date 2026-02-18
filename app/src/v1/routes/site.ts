@@ -6,7 +6,7 @@
  * GET  /s/:slug           — Redirect to index.html
  */
 
-import { Hono } from 'hono'
+import { Hono, Context } from 'hono'
 import { Site, SiteFileInput } from '../Site'
 import { getDb } from '../../db'
 import { authMiddleware, AuthEnv } from '../../auth'
@@ -55,7 +55,7 @@ export async function handlePublishSite (
   request: PublishSiteRequest,
   site: Site,
   userId: number,
-  db: any,
+  db: import('better-sqlite3').Database,
   baseUrl: string
 ): Promise<PublishSiteResponse> {
   const { slug, title, siteFiles, isFirstBatch, isLastBatch, totalFiles } = request
@@ -287,7 +287,7 @@ const EXPIRED_PAGE = `<!DOCTYPE html>
 </head><body><div class="box"><h1>410</h1><p>This site has expired and is no longer available.</p></div></body></html>`
 
 /** Check expiry and serve a site, or return 410 if expired */
-function serveSiteOrExpired (slug: string, filePath: string, site: Site, c: any) {
+function serveSiteOrExpired (slug: string, filePath: string, site: Site, c: Context) {
   const db = getDb()
   const siteRecord = db.prepare('SELECT expires_at FROM sites WHERE slug = ?').get(slug) as { expires_at: number | null } | undefined
   if (!siteRecord) return c.notFound()

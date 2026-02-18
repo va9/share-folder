@@ -82,7 +82,7 @@ export class Site {
   }
 
   /** Delete all expired sites from disk and DB */
-  cleanupExpired (db: any): void {
+  cleanupExpired (db: import('better-sqlite3').Database): void {
     const now = Date.now()
     const expired = db.prepare('SELECT id, slug FROM sites WHERE expires_at IS NOT NULL AND expires_at < ?').all(now) as Array<{ id: number; slug: string }>
 

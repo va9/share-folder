@@ -1,122 +1,79 @@
-# Share Note
+# Publish Folder
 
-Instantly share / publish a note. Notes are shared with your full theme and should look identical to how they look in your Obsidian vault.
+An Obsidian plugin that publishes an entire folder as a navigable website. Your notes become a static site with sidebar navigation, backlinks, full-text search, and tag pages.
 
-- 🚥 [System Status](https://status.note.sx/)
-- 🆘 I need help! [Go here first for help and troubleshooting](https://docs.note.sx/)
-- 👉 [Install this plugin from the Plugin Store](https://obsidian.md/plugins?id=share-note)
-- 📄 [Documentation](https://docs.note.sx/)
-- 💬 [Discussion for this plugin](https://forum.obsidian.md/t/42788)
-- 🚀 [Request new features / see the roadmap](https://note.sx/roadmap)
+## Features
 
-To share a note, choose `Share Note` from the command palette, or click the `⋮` menu in any note and choose `Share note on the web`
+- **Folder-to-website** publishing with a single command
+- **Sidebar navigation** that mirrors your vault folder structure
+- **Backlinks** between pages, just like in Obsidian
+- **Full-text search** across all published pages
+- **Tag pages** with automatic indexing
+- **Dark/light theme** toggle
+- **SPA router** for instant page transitions
+- **Zero-knowledge encryption** -- content is encrypted client-side with AES-256-GCM; the server never sees your data. Decryption key lives in the URL fragment (`#key`), which is never sent to the server.
+- **Vanity URLs** -- claim a short slug (e.g., `/s/yourname/notes/`)
+- **Expiring sites** -- auto-delete after 1, 7, 30, or 90 days
+- **Local HTML export** -- publish to a folder on disk, no server needed
 
-<img width="340" src="https://github.com/user-attachments/assets/457721d9-3226-429e-b1c0-050b0370045e" />
+## Installation
 
----
+### From GitHub (BRAT)
 
-## Full theme support
+1. Install the [BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin
+2. Add this repo URL in BRAT settings
+3. Enable "Publish Folder" in Community Plugins
 
-Uploads using your current theme, along with all your options and custom CSS snippets.
+### Manual
 
-Supports all Obsidian content types:
-
-### Images!
-
-<img width="320" src="docs/wow5.png">
-
-### Dataview queries!
-
-Here's an example inline Dataview query. It will be correctly rendered when sharing:
-
-```
-The answer is `= 7 + 8`!
-```
-
-The answer is 15!
-
-### Callouts!
-
-<img width="600" src="docs/callouts.png">
-
-### Links between notes!
-
-If your shared note links to another note which is also shared, that link will also function on the shared webpage.
-
-### Code blocks!
-
-```javascript
-function doYouEven(haveToAsk) {
-  return 'Of course we can do it!'
-}
-```
-
-### Checkboxes! Tags!
-
-**Project Manhattan:** #in-progress #behind-schedule
-
-- [x] Start project
-- [x] Procrastinate
-- [ ] Finish project
-
-### Internal links
-
-Share a table of contents and jump around your document.
-
----
+1. Download `main.js` and `manifest.json` from the [latest release](../../releases/latest)
+2. Create a folder: `<your-vault>/.obsidian/plugins/obsidian-publish-folder/`
+3. Place both files in that folder
+4. Enable "Publish Folder" in Obsidian settings under Community Plugins
 
 ## Usage
 
-Use the `Share Note` command from the Command Palette. You can map it to a hotkey to make things faster.
+1. Open the command palette and run **Publish Folder: Publish to server** or **Publish Folder: Publish to local HTML**
+2. Select the folder you want to publish
+3. Your site is live
 
-The first time a file is shared, the plugin will automatically upload all your theme styles. The next time you share a file, it will use the previously uploaded theme files.
+### Settings
 
-If you want to force the theme CSS to update, use the command `Force re-upload of all data for this note`.
+| Setting | Description |
+|---------|-------------|
+| **Default folder** | Skip the folder picker and always publish this folder |
+| **Vanity URL** | Claim a short URL prefix (e.g., `yourname`) so your sites are at `/s/yourname/<folder>/` |
+| **Encryption** | Encrypt content before uploading. The key is appended to the URL as a `#fragment`. |
+| **Expiry** | Auto-delete the site after a set duration. Re-publishing resets the timer. |
 
----
+### URL structure
 
-## Encryption
+| Type | URL |
+|------|-----|
+| Default | `/s/<prefix>/<folder>/` |
+| Vanity | `/s/<vanity>/<folder>/` |
+| Encrypted | `/s/<vanity>/<folder>/#<key>` |
 
-The content of your note is encrypted by default. What this means is that you can read the note, and the person you send it to can read the note, but nobody else can read the content - not even the hosting server.
-
-> 🛈 **Encryption is optional, and can be turned on/off for individual notes, or for all notes, whatever you prefer.**
-
-> 🛈 Encryption applies to the note text content. It does not apply to attachments, which are stored unencrypted. Share Note is not a file sharing service, it's a **note* sharing service. If you want encrypted file sharing, it's not the right tool for you.
-
-### 🧑‍💻 How it works 
-
-When you share an encrypted note, you'll get a share link that looks like this:
-
-https://share.note.sx/4earajc8#PtC3oQDjDQK9VP7fljmQkLBA/rIMb2tbFsGoG44VdFY
-
-This part is the link to the file:
-
-https://share.note.sx/4earajc8
-
-If you click on it, you'll see a message that says "*Encrypted note*", because you haven't provided the decryption key.
-
-The decryption key is the second part of the share link after the `#` symbol:
-
-`#PtC3oQDjDQK9VP7fljmQkLBA/rIMb2tbFsGoG44VdFY`
-
-When you combine those two things together, the note is able to be decrypted and you can see the content:
-
-https://share.note.sx/4earajc8#PtC3oQDjDQK9VP7fljmQkLBA/rIMb2tbFsGoG44VdFY
-
-The decryption key **only** exists inside your vault, and is only known to you and whoever you send the link to. Nobody else can read the content.
-
-You may optionally share an unencrypted version of a note by using the frontmatter checkbox property `share_unencrypted` = ✅. This note you are currently reading is shared unencrypted.
-
-If you decide you want to share most notes unencrypted by default, then you can encrypt an individual note by using a frontmatter checkbox called `share_encrypted`.
+Where `<prefix>` is the first 8 characters of your user ID, and `<folder>` is the folder name.
 
 ## Self-hosting
 
-If you want to self-host your own server, you can use this docker image: https://github.com/note-sx/server
+The server is a Node.js app using Hono and SQLite. See `app/` for the source and Dockerfile.
 
-## Troubleshooting
+```bash
+cd app
+npm install
+npm run build
+node dist/index.js
+```
 
-See here: [Troubleshooting](https://docs.note.sx/troubleshooting)
+Environment variables:
 
-### System status
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `3000` | Server port |
+| `DATA_DIR` | `/data` | Directory for SQLite database and site files |
 
-https://status.note.sx/
+## License
+
+MIT

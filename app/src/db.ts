@@ -52,6 +52,20 @@ function runMigrations (db: Database.Database): void {
       SELECT 1 FROM sites s2 WHERE s2.slug = sites.user_prefix || '/' || sites.slug
     )
   `)
+
+  // Google tokens table for OAuth
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS google_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      users_id INTEGER UNIQUE NOT NULL,
+      access_token TEXT NOT NULL,
+      refresh_token TEXT NOT NULL,
+      expires_at INTEGER NOT NULL,
+      created INTEGER NOT NULL,
+      updated INTEGER NOT NULL,
+      FOREIGN KEY (users_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `)
 }
 
 export function getDb (): Database.Database {

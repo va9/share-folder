@@ -22,6 +22,7 @@ export default class SharePlugin extends Plugin {
       this.settings.uid = await shortHash('' + Date.now() + Math.random())
       await this.saveSettings()
     }
+    // Migrate users from the original Share Note plugin
     if (this.settings.server === 'https://api.obsidianshare.com' || this.settings.server === 'https://api.note.sx') {
       this.settings.server = 'https://obsidian-publish.fly.dev'
       this.settings.apiKey = ''

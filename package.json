@@ -9,7 +9,7 @@
 		"version": "node version-bump.mjs && git add manifest.json versions.json"
 	},
 	"keywords": [],
-	"author": "Alan Grainger",
+	"author": "Arya",
 	"license": "MIT",
 	"devDependencies": {
 		"@types/csso": "^5.0.2",

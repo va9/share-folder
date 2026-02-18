@@ -1,6 +1,6 @@
 /**
  * Rewrites internal links in rendered HTML to point to relative site URLs
- * instead of Obsidian vault paths or share.note.sx URLs.
+ * instead of Obsidian vault paths.
  */
 export class LinkRewriter {
   /** Map from vault file path -> site slug (relative path without extension) */

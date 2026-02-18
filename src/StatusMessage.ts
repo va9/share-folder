@@ -16,15 +16,15 @@ interface StatusAttributes {
 
 const statuses: { [key: number]: StatusAttributes } = {
   [StatusType.Error]: {
-    class: 'share-note-status-error',
+    class: 'publish-folder-status-error',
     icon: '❌ '
   },
   [StatusType.Info]: {
-    class: 'share-note-status-info',
+    class: 'publish-folder-status-info',
     icon: ''
   },
   [StatusType.Success]: {
-    class: 'share-note-status-success',
+    class: 'publish-folder-status-success',
     icon: '✔ '
   }
 }
