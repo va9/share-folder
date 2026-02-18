@@ -895,8 +895,7 @@ export class SitePublisher {
     let css = rules.join('').replace(/\n/g, '')
 
     // Strip Obsidian app-level properties that break published pages.
-    // share-note avoids this by having the server control the template;
-    // since we generate static HTML, we strip them from the CSS instead.
+    // Since we generate static HTML, we strip them from the CSS.
     css = css.replace(/user-select:\s*none;?/g, '')
     css = css.replace(/-webkit-user-select:\s*none;?/g, '')
     css = css.replace(/contain:\s*strict;?/g, '')
