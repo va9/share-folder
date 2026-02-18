@@ -1,7 +1,7 @@
 {
-	"name": "obsidian-publish-folder",
+	"name": "share-folder",
 	"version": "0.1.0",
-	"description": "Publish an entire folder as a navigable website with sidebar navigation, backlinks, search, and tag pages.",
+	"description": "Share an entire folder as a navigable website with sidebar navigation, backlinks, search, and tag pages.",
 	"main": "main.js",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",

@@ -39,7 +39,7 @@ account.post('/get-key', async (c) => {
     db.prepare('INSERT INTO users (uid, api_key, created) VALUES (?, ?, ?)').run(id, apiKey, now)
   }
 
-  return c.json({ key: apiKey, redirect: `obsidian://publish-folder?action=share-note&key=${apiKey}` })
+  return c.json({ key: apiKey, redirect: `obsidian://share-folder?action=connect&key=${apiKey}` })
 })
 
 function connectPage (uid: string) {
