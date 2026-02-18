@@ -1,9 +1,9 @@
 {
-	"id": "obsidian-publish-folder",
-	"name": "Publish Folder",
+	"id": "share-folder",
+	"name": "Share Folder",
 	"version": "0.1.0",
 	"minAppVersion": "0.15.0",
-	"description": "Publish an entire folder as a navigable website with sidebar navigation, backlinks, search, and tag pages.",
+	"description": "Share an entire folder as a navigable website with sidebar navigation, backlinks, search, and tag pages.",
 	"author": "Arya",
 	"isDesktopOnly": false
 }

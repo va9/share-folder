@@ -16,15 +16,15 @@ interface StatusAttributes {
 
 const statuses: { [key: number]: StatusAttributes } = {
   [StatusType.Error]: {
-    class: 'publish-folder-status-error',
+    class: 'share-folder-status-error',
     icon: '❌ '
   },
   [StatusType.Info]: {
-    class: 'publish-folder-status-info',
+    class: 'share-folder-status-info',
     icon: ''
   },
   [StatusType.Success]: {
-    class: 'publish-folder-status-success',
+    class: 'share-folder-status-success',
     icon: '✔ '
   }
 }

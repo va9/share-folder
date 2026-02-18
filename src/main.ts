@@ -34,7 +34,7 @@ export default class SharePlugin extends Plugin {
     this.api = new API(this)
 
     // API key callback via obsidian:// protocol handler
-    this.registerObsidianProtocolHandler('publish-folder', async (data) => {
+    this.registerObsidianProtocolHandler('share-folder', async (data) => {
       if (data.key) {
         this.settings.apiKey = data.key
         await this.saveSettings()
@@ -45,10 +45,10 @@ export default class SharePlugin extends Plugin {
       }
     })
 
-    // Command - Publish Folder
+    // Command — Share folder to web
     this.addCommand({
-      id: 'publish-folder',
-      name: 'Publish folder as website',
+      id: 'share-folder-to-web',
+      name: 'Share folder to web',
       callback: () => {
         new FolderPickerModal(this.app, async (folder) => {
           const publisher = new SitePublisher(this, folder)
@@ -57,10 +57,10 @@ export default class SharePlugin extends Plugin {
       }
     })
 
-    // Command - Publish Folder to Disk
+    // Command — Share folder to local HTML
     this.addCommand({
-      id: 'publish-folder-to-disk',
-      name: 'Publish folder to disk (local HTML)',
+      id: 'share-folder-to-disk',
+      name: 'Share folder to local HTML',
       callback: () => {
         new FolderPickerModal(this.app, (folder) => {
           // @ts-ignore - app.vault.adapter.basePath is available on desktop
@@ -77,7 +77,7 @@ export default class SharePlugin extends Plugin {
     })
 
     // Ribbon icon
-    this.addRibbonIcon('globe', 'Publish folder as website', () => {
+    this.addRibbonIcon('globe', 'Share folder to web', () => {
       new FolderPickerModal(this.app, async (folder) => {
         const publisher = new SitePublisher(this, folder)
         await publisher.publish()
@@ -92,7 +92,7 @@ export default class SharePlugin extends Plugin {
 
           menu.addItem((item) => {
             item.setIcon('globe')
-            item.setTitle(published ? 'Re-publish folder' : 'Publish folder as website')
+            item.setTitle(published ? 'Re-share folder to web' : 'Share folder to web')
             item.onClick(async () => {
               const publisher = new SitePublisher(this, file)
               await publisher.publish()
@@ -102,7 +102,7 @@ export default class SharePlugin extends Plugin {
           if (published) {
             menu.addItem((item) => {
               item.setIcon('external-link')
-              item.setTitle('Open published site')
+              item.setTitle('Open shared site')
               item.onClick(() => {
                 // @ts-ignore
                 require('electron').shell.openExternal(published.url)
@@ -118,7 +118,7 @@ export default class SharePlugin extends Plugin {
             })
             menu.addItem((item) => {
               item.setIcon('trash-2')
-              item.setTitle('Delete published site')
+              item.setTitle('Delete shared site')
               item.onClick(async () => {
                 try {
                   await this.api.deleteSite(published.slug)
@@ -134,7 +134,7 @@ export default class SharePlugin extends Plugin {
 
           menu.addItem((item) => {
             item.setIcon('hard-drive-download')
-            item.setTitle('Publish folder to disk (local HTML)')
+            item.setTitle('Share folder to local HTML')
             item.onClick(() => {
               // @ts-ignore
               const vaultPath = this.app.vault.adapter.basePath || ''

@@ -15,7 +15,7 @@ export class OutputPathModal extends Modal {
     const { contentEl } = this
     contentEl.empty()
 
-    contentEl.createEl('h2', { text: 'Publish folder to disk' })
+    contentEl.createEl('h2', { text: 'Share folder to local HTML' })
     contentEl.createEl('p', {
       text: 'Choose an output directory. The site will be written as static HTML files you can open in a browser.',
       cls: 'setting-item-description'
