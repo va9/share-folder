@@ -35,3 +35,6 @@ app/dist/
 
 # Planning docs
 planning/
+
+# Separate plugins (dev only)
+gdocs/
