@@ -1,5 +1,4 @@
 import { App, Modal, Setting } from 'obsidian'
-import * as path from 'path'
 
 export class OutputPathModal extends Modal {
   private onSubmit: (outputDir: string) => void

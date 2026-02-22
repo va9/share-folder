@@ -1,11 +1,12 @@
 import { Plugin, TFolder } from 'obsidian'
-import { DEFAULT_SETTINGS, ShareSettings, ShareSettingsTab } from './settings'
+import { DEFAULT_SETTINGS, FolderSiteSettings, ShareSettings, ShareSettingsTab } from './settings'
 import API from './api'
 import StatusMessage, { StatusType } from './StatusMessage'
 import { shortHash, sha256 } from './crypto'
 import { FolderPickerModal } from './site/ui/folder-picker'
 import { SitePublisher } from './site/site-publisher'
 import { OutputPathModal } from './site/ui/output-path-modal'
+import { PublishSettingsModal } from './site/ui/publish-settings-modal'
 
 export default class SharePlugin extends Plugin {
   settings: ShareSettings
@@ -20,12 +21,6 @@ export default class SharePlugin extends Plugin {
     await this.loadSettings()
     if (!this.settings.uid) {
       this.settings.uid = await shortHash('' + Date.now() + Math.random())
-      await this.saveSettings()
-    }
-    // Migrate users from the original Share Note plugin
-    if (this.settings.server === 'https://api.obsidianshare.com' || this.settings.server === 'https://api.note.sx') {
-      this.settings.server = 'https://obsidian-publish.fly.dev'
-      this.settings.apiKey = ''
       await this.saveSettings()
     }
     this.settingsPage = new ShareSettingsTab(this.app, this)
@@ -50,9 +45,11 @@ export default class SharePlugin extends Plugin {
       id: 'share-folder-to-web',
       name: 'Share folder to web',
       callback: () => {
-        new FolderPickerModal(this.app, async (folder) => {
-          const publisher = new SitePublisher(this, folder)
-          await publisher.publish()
+        new FolderPickerModal(this.app, (folder) => {
+          new PublishSettingsModal(this.app, this, folder, async (folderSettings) => {
+            const publisher = new SitePublisher(this, folder)
+            await publisher.publish(folderSettings)
+          }).open()
         }).open()
       }
     })
@@ -63,14 +60,16 @@ export default class SharePlugin extends Plugin {
       name: 'Share folder to local HTML',
       callback: () => {
         new FolderPickerModal(this.app, (folder) => {
-          // @ts-ignore - app.vault.adapter.basePath is available on desktop
-          const vaultPath = this.app.vault.adapter.basePath || ''
-          const defaultDir = vaultPath
-            ? require('path').join(vaultPath, '_site')
-            : ''
-          new OutputPathModal(this.app, defaultDir, async (outputDir) => {
-            const publisher = new SitePublisher(this, folder)
-            await publisher.publishToDisk(outputDir)
+          new PublishSettingsModal(this.app, this, folder, (folderSettings) => {
+            // @ts-ignore - app.vault.adapter.basePath is available on desktop
+            const vaultPath = this.app.vault.adapter.basePath || ''
+            const defaultDir = vaultPath
+              ? require('path').join(vaultPath, '_site')
+              : ''
+            new OutputPathModal(this.app, defaultDir, async (outputDir) => {
+              const publisher = new SitePublisher(this, folder)
+              await publisher.publishToDisk(outputDir, folderSettings)
+            }).open()
           }).open()
         }).open()
       }
@@ -78,9 +77,11 @@ export default class SharePlugin extends Plugin {
 
     // Ribbon icon
     this.addRibbonIcon('globe', 'Share folder to web', () => {
-      new FolderPickerModal(this.app, async (folder) => {
-        const publisher = new SitePublisher(this, folder)
-        await publisher.publish()
+      new FolderPickerModal(this.app, (folder) => {
+        new PublishSettingsModal(this.app, this, folder, async (folderSettings) => {
+          const publisher = new SitePublisher(this, folder)
+          await publisher.publish(folderSettings)
+        }).open()
       }).open()
     })
 
@@ -92,17 +93,19 @@ export default class SharePlugin extends Plugin {
 
           menu.addItem((item) => {
             item.setIcon('globe')
-            item.setTitle(published ? 'Re-share folder to web' : 'Share folder to web')
-            item.onClick(async () => {
-              const publisher = new SitePublisher(this, file)
-              await publisher.publish()
+            item.setTitle(published ? 'See settings and re-publish' : 'Share folder to web')
+            item.onClick(() => {
+              new PublishSettingsModal(this.app, this, file, async (folderSettings) => {
+                const publisher = new SitePublisher(this, file)
+                await publisher.publish(folderSettings)
+              }).open()
             })
           })
 
           if (published) {
             menu.addItem((item) => {
               item.setIcon('external-link')
-              item.setTitle('Open shared site')
+              item.setTitle('Open shared folder')
               item.onClick(() => {
                 // @ts-ignore
                 require('electron').shell.openExternal(published.url)
@@ -110,23 +113,23 @@ export default class SharePlugin extends Plugin {
             })
             menu.addItem((item) => {
               item.setIcon('copy')
-              item.setTitle('Copy site URL')
+              item.setTitle('Copy URL')
               item.onClick(async () => {
                 await navigator.clipboard.writeText(published.url)
-                new StatusMessage('Site URL copied to clipboard', StatusType.Success)
+                new StatusMessage('URL copied to clipboard', StatusType.Success)
               })
             })
             menu.addItem((item) => {
               item.setIcon('trash-2')
-              item.setTitle('Delete shared site')
+              item.setTitle('Delete shared folder')
               item.onClick(async () => {
                 try {
                   await this.api.deleteSite(published.slug)
                   delete this.settings.publishedSites[file.path]
                   await this.saveSettings()
-                  new StatusMessage('Site deleted', StatusType.Info)
+                  new StatusMessage('Shared folder deleted', StatusType.Info)
                 } catch (e) {
-                  new StatusMessage('Failed to delete site', StatusType.Error)
+                  new StatusMessage('Failed to delete shared folder', StatusType.Error)
                 }
               })
             })
@@ -136,14 +139,16 @@ export default class SharePlugin extends Plugin {
             item.setIcon('hard-drive-download')
             item.setTitle('Share folder to local HTML')
             item.onClick(() => {
-              // @ts-ignore
-              const vaultPath = this.app.vault.adapter.basePath || ''
-              const defaultDir = vaultPath
-                ? require('path').join(vaultPath, '_site')
-                : ''
-              new OutputPathModal(this.app, defaultDir, async (outputDir) => {
-                const publisher = new SitePublisher(this, file)
-                await publisher.publishToDisk(outputDir)
+              new PublishSettingsModal(this.app, this, file, (folderSettings) => {
+                // @ts-ignore
+                const vaultPath = this.app.vault.adapter.basePath || ''
+                const defaultDir = vaultPath
+                  ? require('path').join(vaultPath, '_site')
+                  : ''
+                new OutputPathModal(this.app, defaultDir, async (outputDir) => {
+                  const publisher = new SitePublisher(this, file)
+                  await publisher.publishToDisk(outputDir, folderSettings)
+                }).open()
               }).open()
             })
           })

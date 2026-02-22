@@ -67,12 +67,12 @@ export class PublishProgressModal extends Modal {
       this.resultEl.empty()
       const heading = this.contentEl.querySelector('h2')
       if (heading) heading.setText('Published!')
-      this.stageEl.setText('Your site is live')
+      this.stageEl.setText('Your folder is live')
       this.barFill.style.width = '100%'
       this.progressEl.setText('')
       this.detailEl.setText('')
 
-      const btn = this.resultEl.createEl('button', { text: 'Open Site' })
+      const btn = this.resultEl.createEl('button', { text: 'Open' })
       btn.addEventListener('click', () => {
         // @ts-ignore
         const { shell } = require('electron')

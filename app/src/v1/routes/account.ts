@@ -2,8 +2,12 @@ import { Hono } from 'hono'
 import { html, raw } from 'hono/html'
 import { randomBytes } from 'crypto'
 import { getDb } from '../../db'
+import { rateLimit } from '../../ratelimit'
 
 const account = new Hono()
+
+// 5 key generations per IP per hour
+account.use('/get-key', rateLimit({ windowMs: 3600000, max: 5, message: 'Too many account requests. Try again in an hour.' }))
 
 /**
  * GET /get-key?id=<uid>
@@ -133,7 +137,7 @@ function connectPage (uid: string) {
     <p>Click the button below to generate an API key and link it with your Obsidian plugin. You'll be redirected back to Obsidian automatically.</p>
     <button class="btn" id="connect-btn" onclick="connectPlugin()">Connect &amp; open Obsidian</button>
     <div class="status" id="status"></div>
-    <div class="footer">Obsidian Publish</div>
+    <div class="footer">OpenNotes</div>
   </div>
 
   <script>

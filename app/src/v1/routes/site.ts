@@ -2,14 +2,15 @@
  * Site publishing and serving routes.
  *
  * POST /v1/site/publish  — Receive site files and store them
- * GET  /s/:slug/*         — Serve site pages
- * GET  /s/:slug           — Redirect to index.html
+ * GET  /:slug/*           — Serve site pages
+ * GET  /:slug             — Redirect to index.html
  */
 
 import { Hono, Context } from 'hono'
 import { Site, SiteFileInput } from '../Site'
 import { getDb } from '../../db'
 import { authMiddleware, AuthEnv } from '../../auth'
+import { rateLimit } from '../../ratelimit'
 
 export interface PublishSiteRequest {
   slug: string
@@ -51,6 +52,11 @@ function isValidVanitySlug (slug: string): boolean {
   return true
 }
 
+/** Abuse limits */
+const MAX_FILES_PER_SITE = 5000
+const MAX_SITES_PER_USER = 100
+const MAX_FILE_SIZE = 2 * 1024 * 1024 // 2 MB per file (20 files × 2 MB = 40 MB < 50 MB body limit)
+
 export async function handlePublishSite (
   request: PublishSiteRequest,
   site: Site,
@@ -61,9 +67,28 @@ export async function handlePublishSite (
   const { slug, title, siteFiles, isFirstBatch, isLastBatch, totalFiles } = request
 
   try {
+    // Enforce limits
+    if (totalFiles > MAX_FILES_PER_SITE) {
+      return { success: false, error: `Too many files. Maximum is ${MAX_FILES_PER_SITE} per site.` }
+    }
+    for (const file of siteFiles) {
+      if (file.content && Buffer.byteLength(file.content, file.base64 ? 'base64' : 'utf8') > MAX_FILE_SIZE) {
+        return { success: false, error: `File too large: ${file.path}. Maximum is 2 MB per file.` }
+      }
+    }
+
     // On first batch, create or update the site record
     if (isFirstBatch) {
       const now = Date.now()
+
+      // Enforce per-user site limit (only for new sites)
+      const existingForSlug = db.prepare('SELECT id FROM sites WHERE slug = ?').get(slug) as { id: number } | undefined
+      if (!existingForSlug) {
+        const siteCount = db.prepare('SELECT COUNT(*) as count FROM sites WHERE users_id = ?').get(userId) as { count: number }
+        if (siteCount.count >= MAX_SITES_PER_USER) {
+          return { success: false, error: `Too many sites. Maximum is ${MAX_SITES_PER_USER} per account.` }
+        }
+      }
 
       // Validate and resolve vanity slug (per-user: applies to all their sites)
       const vanitySlug = request.vanitySlug || null
@@ -147,7 +172,7 @@ export async function handlePublishSite (
       const displayPath = vanity ? `${vanity}/${folderName}` : slug
       return {
         success: true,
-        url: `${baseUrl}/s/${displayPath}/`
+        url: `${baseUrl}/${displayPath}/`
       }
     }
 
@@ -163,7 +188,7 @@ export async function handlePublishSite (
 
 /**
  * Handle serving a site page.
- * Maps /s/:slug/:path to the stored site files.
+ * Maps /:slug/:path to the stored site files.
  */
 export function handleServeSite (
   slug: string,
@@ -194,6 +219,11 @@ const site = new Site(DATA_DIR)
 /** Authenticated publish route */
 export const publishRouter = new Hono<AuthEnv>()
 
+// 60 publish requests per IP per minute (batched uploads send many requests)
+publishRouter.use('/publish', rateLimit({ windowMs: 60000, max: 60 }))
+// 10 delete requests per IP per minute
+publishRouter.use('/delete', rateLimit({ windowMs: 60000, max: 10 }))
+
 publishRouter.post('/publish', authMiddleware, async (c) => {
   const body = await c.req.json() as PublishSiteRequest
   const userId = c.get('userId')
@@ -215,7 +245,8 @@ publishRouter.post('/publish', authMiddleware, async (c) => {
     }
   }
 
-  const baseUrl = new URL(c.req.url).origin
+  const baseUrl = process.env.BASE_URL
+    || `${c.req.header('x-forwarded-proto') || 'https'}://${c.req.header('x-forwarded-host') || c.req.header('host') || new URL(c.req.url).host}`
   const result = await handlePublishSite(body, site, userId, db, baseUrl)
 
   if (!result.success) {
@@ -286,6 +317,30 @@ const EXPIRED_PAGE = `<!DOCTYPE html>
 .box{text-align:center;padding:40px}.box h1{font-size:2em;margin:0 0 8px}.box p{color:#6c757d;margin:4px 0}</style>
 </head><body><div class="box"><h1>410</h1><p>This site has expired and is no longer available.</p></div></body></html>`
 
+/** Bot user-agent patterns for link preview crawlers */
+const BOT_UA = /telegrambot|twitterbot|slackbot|linkedinbot|discordbot|facebookexternalhit|whatsapp/i
+
+/** For bot crawlers requesting HTML: return a lightweight page with just OG tags */
+function serveBotPreview (content: Buffer): Response | null {
+  const html = content.toString('utf-8')
+  const headMatch = html.match(/<head[^>]*>([\s\S]*?)<\/head>/i)
+  if (!headMatch) return null
+
+  // Extract only meta and title tags from <head>
+  const head = headMatch[1]
+  const tags: string[] = []
+  for (const match of head.matchAll(/<(meta|title)[^>]*>([^<]*<\/title>)?/gi)) {
+    tags.push(match[0])
+  }
+
+  // Extract title text for body content (some bots need non-empty body)
+  const titleMatch = html.match(/<title>([^<]*)<\/title>/i)
+  const titleText = titleMatch ? titleMatch[1] : ''
+
+  const minimal = `<!DOCTYPE html><html prefix="og: http://ogp.me/ns#"><head>${tags.join('\n')}</head><body><p>${titleText}</p></body></html>`
+  return new Response(minimal, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } })
+}
+
 /** Check expiry and serve a site, or return 410 if expired */
 function serveSiteOrExpired (slug: string, filePath: string, site: Site, c: Context) {
   const db = getDb()
@@ -298,6 +353,14 @@ function serveSiteOrExpired (slug: string, filePath: string, site: Site, c: Cont
 
   const result = handleServeSite(slug, filePath, site)
   if (!result) return c.notFound()
+
+  // For bot crawlers requesting HTML, return lightweight OG-only page
+  const ua = c.req.header('user-agent') || ''
+  if (BOT_UA.test(ua) && result.mimeType.includes('text/html')) {
+    const botResponse = serveBotPreview(result.content)
+    if (botResponse) return botResponse
+  }
+
   return new Response(result.content as any, { status: 200, headers: { 'Content-Type': result.mimeType } })
 }
 
@@ -305,22 +368,34 @@ function serveSiteOrExpired (slug: string, filePath: string, site: Site, c: Cont
 export const serveRouter = new Hono()
 
 serveRouter.get('/*', (c) => {
-  const fullPath = c.req.path.replace(/^\/s\/?/, '')
+  const fullPath = c.req.path.replace(/^\//, '')
   const segments = fullPath.split('/').filter(Boolean)
 
   if (segments.length === 0) return c.notFound()
 
+  // Don't intercept API, health, or static page routes
+  if (['v1', 'health', 'terms', 'abuse', 'admin'].includes(segments[0])) return c.notFound()
+
+  const db = getDb()
   const first = segments[0]
   const isPrefix = /^[0-9a-f]{8}$/.test(first)
 
-  // --- Prefixed route: /s/{prefix}/{slug}/[file] ---
+  // --- Prefixed route: /{prefix}/{slug}/[file] ---
   if (isPrefix && segments.length >= 2) {
+    // Check if this prefix has a vanity slug — if so, 302 redirect
+    const prefixVanity = db.prepare('SELECT vanity_slug FROM sites WHERE user_prefix = ? AND vanity_slug IS NOT NULL LIMIT 1').get(first) as { vanity_slug: string } | undefined
+    if (prefixVanity) {
+      const rest = segments.slice(1).join('/')
+      const trailingSlash = c.req.path.endsWith('/') ? '/' : ''
+      return c.redirect(`/${prefixVanity.vanity_slug}/${rest}${trailingSlash}`, 302)
+    }
+
     const slug = `${segments[0]}/${segments[1]}`
     const filePath = segments.slice(2).join('/') || ''
 
-    // Redirect /s/prefix/slug → /s/prefix/slug/
+    // Redirect /prefix/slug → /prefix/slug/
     if (segments.length === 2 && !c.req.path.endsWith('/')) {
-      return c.redirect(`/s/${slug}/`)
+      return c.redirect(`/${slug}/`)
     }
 
     return serveSiteOrExpired(slug, filePath || 'index.html', site, c)
@@ -331,31 +406,30 @@ serveRouter.get('/*', (c) => {
     return c.notFound()
   }
 
-  // --- Vanity route: /s/{vanity}/{folder}/[file] ---
+  // --- Vanity route: /{vanity}/{folder}/[file] ---
   // Vanity slug maps to a user_prefix. Look up any site with this vanity to get the prefix.
   const vanity = segments[0]
-  const db = getDb()
   const vanityRecord = db.prepare('SELECT user_prefix FROM sites WHERE vanity_slug = ? LIMIT 1').get(vanity) as { user_prefix: string } | undefined
   if (!vanityRecord) return c.notFound()
 
   if (segments.length >= 2) {
-    // /s/{vanity}/{folder}/[file] → resolve to prefix/folder
+    // /{vanity}/{folder}/[file] → resolve to prefix/folder
     const slug = `${vanityRecord.user_prefix}/${segments[1]}`
     const filePath = segments.slice(2).join('/') || ''
 
-    // Redirect /s/vanity/folder → /s/vanity/folder/
+    // Redirect /vanity/folder → /vanity/folder/
     if (segments.length === 2 && !c.req.path.endsWith('/')) {
-      return c.redirect(`/s/${vanity}/${segments[1]}/`)
+      return c.redirect(`/${vanity}/${segments[1]}/`)
     }
 
     return serveSiteOrExpired(slug, filePath || 'index.html', site, c)
   }
 
-  // /s/{vanity}/ alone — if this user has exactly one site, serve it; otherwise 404
+  // /{vanity}/ alone — if this user has exactly one site, serve it; otherwise 404
   const singleSite = db.prepare('SELECT slug FROM sites WHERE vanity_slug = ?').all(vanity) as { slug: string }[]
   if (singleSite.length === 1) {
     if (!c.req.path.endsWith('/')) {
-      return c.redirect(`/s/${vanity}/`)
+      return c.redirect(`/${vanity}/`)
     }
     return serveSiteOrExpired(singleSite[0].slug, 'index.html', site, c)
   }

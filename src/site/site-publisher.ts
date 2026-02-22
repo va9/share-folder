@@ -1,5 +1,6 @@
-import { App, CachedMetadata, TFile, TFolder, normalizePath } from 'obsidian'
+import { App, CachedMetadata, TFile, TFolder, WorkspaceLeaf, normalizePath } from 'obsidian'
 import SharePlugin from '../main'
+import { FolderSiteSettings } from '../settings'
 import { LinkAnalyzer } from './link-analyzer'
 import { TagAnalyzer } from './tag-analyzer'
 import { LinkRewriter } from './link-rewriter'
@@ -90,6 +91,7 @@ export class SitePublisher {
   private app: App
   private folder: TFolder
   private progress: PublishProgressModal
+  private folderSettings: FolderSiteSettings | null = null
 
   constructor (plugin: SharePlugin, folder: TFolder) {
     this.plugin = plugin
@@ -98,7 +100,7 @@ export class SitePublisher {
   }
 
   /** Build the full site and return all generated files */
-  async buildSite (encrypt?: boolean): Promise<SiteFile[]> {
+  async buildSite (encrypt?: boolean, siteBaseUrl?: string): Promise<SiteFile[]> {
     // 1. Collect all .md files
     this.progress.setStage('Collecting files...')
     const files = this.collectFiles(this.folder)
@@ -138,12 +140,15 @@ export class SitePublisher {
     this.progress.setStage('Rendering notes...')
     const renderedPages: RenderedPage[] = []
 
+    const activeLeaf = this.app.workspace.getLeaf(false)
+    const renderLeaf = this.app.workspace.getLeaf(true)
+
     for (let i = 0; i < publishableFiles.length; i++) {
       const file = publishableFiles[i]
       this.progress.setProgress(i + 1, publishableFiles.length)
       this.progress.setDetail(file.basename)
 
-      const html = await this.renderNote(file)
+      const html = await this.renderNote(file, renderLeaf)
       const meta = this.app.metadataCache.getFileCache(file)
       const title = this.getTitle(file, meta)
       const tags = this.getTags(meta)
@@ -156,6 +161,9 @@ export class SitePublisher {
         tags
       })
     }
+
+    renderLeaf.detach()
+    this.app.workspace.setActiveLeaf(activeLeaf)
 
     // 7. Extract and process CSS (once for the whole site)
     this.progress.setStage('Processing CSS...')
@@ -307,7 +315,8 @@ export class SitePublisher {
         backlinks: [], // backlinks are already in the content (encrypted or not)
         pathToRoot,
         tags: [],      // tags are already in the content (encrypted or not)
-        encrypted: isEncrypted
+        encrypted: isEncrypted,
+        siteBaseUrl
       })
 
       siteFiles.push({
@@ -348,13 +357,15 @@ export class SitePublisher {
           backlinks: [],
           pathToRoot: '',
           tags: [],
-          encrypted: true
+          encrypted: true,
+          siteBaseUrl
         })
       : siteTemplate.renderIndex({
           siteTitle: this.getSiteTitle(),
           css: minifiedCss,
           navTree,
-          pages: renderedPages.map(p => ({ slug: p.slug, title: p.title }))
+          pages: renderedPages.map(p => ({ slug: p.slug, title: p.title })),
+          siteBaseUrl
         })
     siteFiles.push({ path: 'index.html', content: indexHtml, filetype: 'html' })
 
@@ -396,7 +407,8 @@ export class SitePublisher {
         backlinks: [],
         pathToRoot: '../',
         tags: [],
-        encrypted: isEncrypted
+        encrypted: isEncrypted,
+        siteBaseUrl
       })
       siteFiles.push({
         path: `tags/${tag}.html`,
@@ -432,7 +444,8 @@ export class SitePublisher {
         backlinks: [],
         pathToRoot: '../',
         tags: [],
-        encrypted: isEncrypted
+        encrypted: isEncrypted,
+        siteBaseUrl
       })
       siteFiles.push({ path: 'tags/index.html', content: tagIndexHtml, filetype: 'html' })
     }
@@ -464,7 +477,9 @@ export class SitePublisher {
   }
 
   /** Build and upload site to the server */
-  async publish () {
+  async publish (folderSettings?: FolderSiteSettings) {
+    if (folderSettings) this.folderSettings = folderSettings
+
     // Auto-connect if no API key
     if (!this.plugin.settings.apiKey) {
       const connected = await this.waitForApiKey()
@@ -475,7 +490,13 @@ export class SitePublisher {
     this.progress.open()
 
     try {
-      const siteFiles = await this.buildSite(this.plugin.settings.siteEncrypted)
+      const encrypted = this.folderSettings?.encrypted ?? this.plugin.settings.siteEncrypted
+      const vanity = this.plugin.settings.siteVanitySlug
+      const prefix = this.plugin.settings.uid.slice(0, 8)
+      const folderSlug = this.resolveSlug()
+      const base = vanity || prefix
+      const siteBaseUrl = `${this.plugin.settings.server}/${base}/${folderSlug}`
+      const siteFiles = await this.buildSite(encrypted, siteBaseUrl)
       await this.uploadSite(siteFiles)
     } catch (e) {
       console.error('Site publishing error:', e)
@@ -495,7 +516,9 @@ export class SitePublisher {
     const expiryMap: Record<string, string> = {
       '1 day': '1d', '7 days': '7d', '30 days': '30d', '90 days': '90d'
     }
-    const expiryDuration = expiryMap[this.plugin.settings.siteExpiry] || ''
+    const expiry = this.folderSettings?.expiry ?? this.plugin.settings.siteExpiry
+    const encrypted = this.folderSettings?.encrypted ?? this.plugin.settings.siteEncrypted
+    const expiryDuration = expiryMap[expiry] || ''
 
     try {
       const result = await this.plugin.api.publishSite(
@@ -505,7 +528,7 @@ export class SitePublisher {
         {
           prefix,
           vanitySlug: this.plugin.settings.siteVanitySlug || undefined,
-          encrypted: this.plugin.settings.siteEncrypted || false,
+          encrypted: encrypted || false,
           expiryDuration
         },
         (current, total) => {
@@ -516,7 +539,7 @@ export class SitePublisher {
       if (result?.url) {
         let url = result.url
         // Append encryption key fragment if encrypted
-        if (this.plugin.settings.siteEncrypted) {
+        if (encrypted) {
           const key = this.plugin.settings.siteEncryptionKeys?.[this.folder.path]
           if (key) {
             url += '#' + key
@@ -529,7 +552,7 @@ export class SitePublisher {
           url,
           title: this.getSiteTitle(),
           updatedAt: Date.now(),
-          encrypted: this.plugin.settings.siteEncrypted || false
+          encrypted: encrypted || false
         }
         await this.plugin.saveSettings()
         this.progress.setResult(url)
@@ -574,12 +597,15 @@ export class SitePublisher {
   }
 
   /** Build and write site to a local directory on disk */
-  async publishToDisk (outputDir: string) {
+  async publishToDisk (outputDir: string, folderSettings?: FolderSiteSettings) {
+    if (folderSettings) this.folderSettings = folderSettings
+
     this.progress = new PublishProgressModal(this.app)
     this.progress.open()
 
     try {
-      const siteFiles = await this.buildSite()
+      const encrypted = this.folderSettings?.encrypted ?? false
+      const siteFiles = await this.buildSite(encrypted)
 
       // Write files to disk
       this.progress.setStage('Writing files to disk...')
@@ -667,7 +693,16 @@ export class SitePublisher {
           let relative = resolved.path.slice(this.folder.path.length + 1)
           assetPathMap.set(resolved.path, relative)
         } else {
-          assetPathMap.set(resolved.path, 'assets/img/' + resolved.name)
+          let target = 'assets/img/' + resolved.name
+          const usedPaths = new Set(assetPathMap.values())
+          if (usedPaths.has(target)) {
+            const ext = resolved.extension
+            const stem = resolved.name.slice(0, -(ext.length + 1))
+            let suffix = 1
+            while (usedPaths.has(`assets/img/${stem}_${suffix}.${ext}`)) suffix++
+            target = `assets/img/${stem}_${suffix}.${ext}`
+          }
+          assetPathMap.set(resolved.path, target)
         }
       }
     }
@@ -784,9 +819,8 @@ export class SitePublisher {
   }
 
   /** Render a single note using Obsidian's preview mode */
-  private async renderNote (file: TFile): Promise<string> {
+  private async renderNote (file: TFile, leaf: WorkspaceLeaf): Promise<string> {
     // Open the file in preview mode and extract HTML
-    const leaf = this.app.workspace.getLeaf(false)
     await leaf.openFile(file)
 
     // Switch to preview mode
@@ -1005,7 +1039,7 @@ export class SitePublisher {
 
   /** Get site title from settings or fall back to folder name */
   private getSiteTitle (): string {
-    return this.plugin.settings.siteTitle || this.folder.name
+    return this.folderSettings?.title || this.plugin.settings.siteTitle || this.folder.name
   }
 
   /** Generate a URL-safe slug from a folder name */
@@ -1696,6 +1730,7 @@ const DECRYPT_JS = `(function() {
   // Replicates crypto.ts decryptString logic
 
   function base64ToArrayBuffer(base64) {
+    while (base64.length % 4 !== 0) base64 += '=';
     var binary = atob(base64);
     var bytes = new Uint8Array(binary.length);
     for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);

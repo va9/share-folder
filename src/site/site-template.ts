@@ -17,6 +17,7 @@ export interface SitePageData {
   pathToRoot: string
   tags: string[]
   encrypted?: boolean
+  siteBaseUrl?: string  // e.g. "https://opennotes.io/vanity/folder" — for OG tags
 }
 
 export class SiteTemplate {
@@ -29,11 +30,16 @@ export class SiteTemplate {
     const navHtml = this.renderNavTree(data.navTree, data.currentSlug, data.pathToRoot)
 
     return `<!DOCTYPE html>
-<html data-theme="light">
+<html data-theme="light" prefix="og: http://ogp.me/ns#">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${this.escapeHtml(data.pageTitle)} - ${this.escapeHtml(data.siteTitle)}</title>
+  <meta property="og:title" content="${this.escapeHtml(data.pageTitle)} - ${this.escapeHtml(data.siteTitle)}">
+  <meta property="og:description" content="${this.escapeHtml(data.siteTitle)}">
+  <meta property="og:site_name" content="${this.escapeHtml(data.siteTitle)}">
+  <meta property="og:type" content="website">${data.siteBaseUrl ? `
+  <meta property="og:url" content="${this.escapeHtml(data.siteBaseUrl)}/${data.currentSlug}.html">` : ''}
   <script>(function(){var t=localStorage.getItem('site-theme');if(!t&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)t='dark';if(t)document.documentElement.setAttribute('data-theme',t)})()</script>
   <style>${data.css}</style>
   <link rel="stylesheet" href="${data.pathToRoot}assets/site.css">
@@ -121,6 +127,7 @@ export class SiteTemplate {
     navTree: NavItem
     pages: Array<{ slug: string; title: string }>
     encrypted?: boolean
+    siteBaseUrl?: string
   }): string {
     const navHtml = this.renderNavTree(data.navTree, 'index', '')
 
@@ -132,11 +139,16 @@ export class SiteTemplate {
     pageListHtml += '</ul></div>'
 
     return `<!DOCTYPE html>
-<html data-theme="light">
+<html data-theme="light" prefix="og: http://ogp.me/ns#">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${this.escapeHtml(data.siteTitle)}</title>
+  <meta property="og:title" content="${this.escapeHtml(data.siteTitle)}">
+  <meta property="og:description" content="${this.escapeHtml(data.siteTitle)}">
+  <meta property="og:site_name" content="${this.escapeHtml(data.siteTitle)}">
+  <meta property="og:type" content="website">${data.siteBaseUrl ? `
+  <meta property="og:url" content="${this.escapeHtml(data.siteBaseUrl)}/">` : ''}
   <script>(function(){var t=localStorage.getItem('site-theme');if(!t&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)t='dark';if(t)document.documentElement.setAttribute('data-theme',t)})()</script>
   <style>${data.css}</style>
   <link rel="stylesheet" href="assets/site.css">

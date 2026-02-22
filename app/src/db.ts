@@ -53,6 +53,16 @@ function runMigrations (db: Database.Database): void {
     )
   `)
 
+  // Admin sessions table (survives restarts)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS admin_sessions (
+      token TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'session',
+      expires_at INTEGER NOT NULL
+    )
+  `)
+
   // Google tokens table for OAuth
   db.exec(`
     CREATE TABLE IF NOT EXISTS google_tokens (

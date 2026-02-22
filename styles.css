@@ -1,28 +1,18 @@
-.notice:has(.share-note-status-error.notice) {
+.notice:has(.share-folder-status-error) {
     background: #c10000;
     color: white
 }
 
-.notice:has(.share-note-status-info) {
+.notice:has(.share-folder-status-info) {
     background: hsl(204, 86%, 53%);
     color: white
 }
 
-.notice:has(.share-note-status-success) {
+.notice:has(.share-folder-status-success) {
     background: #629762;
     color: white
 }
-.notice:has(.share-note-status-success) a {
+.notice:has(.share-folder-status-success) a {
     color: white;
     text-decoration: underline;
-}
-
-.share-note-icons {
-    display: flex;
-}
-
-.share-note-icons > span {
-    display: flex;
-    margin-left: 6px;
-    cursor: pointer;
 }
