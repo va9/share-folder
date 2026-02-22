@@ -32,3 +32,6 @@ docs/_site/
 
 # Server build output
 app/dist/
+
+# Planning docs
+planning/

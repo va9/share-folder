@@ -1494,27 +1494,31 @@ body.site-page {
 `
 
 const SIDEBAR_JS = `(function() {
-  // Restore collapsed state from localStorage on pre-rendered nav
-  var folders = document.querySelectorAll('.nav-folder-title');
-  for (var i = 0; i < folders.length; i++) {
-    (function(title) {
-      var folderName = title.getAttribute('data-folder');
-      var children = title.nextElementSibling;
-      if (!folderName || !children) return;
+  function initNav() {
+    var folders = document.querySelectorAll('.nav-folder-title');
+    for (var i = 0; i < folders.length; i++) {
+      (function(title) {
+        var folderName = title.getAttribute('data-folder');
+        var children = title.nextElementSibling;
+        if (!folderName || !children) return;
 
-      var storageKey = 'nav-collapsed-' + folderName;
-      if (localStorage.getItem(storageKey) === '1') {
-        title.classList.add('is-collapsed');
-        children.classList.add('is-collapsed');
-      }
+        var storageKey = 'nav-collapsed-' + folderName;
+        if (localStorage.getItem(storageKey) === '1') {
+          title.classList.add('is-collapsed');
+          children.classList.add('is-collapsed');
+        }
 
-      title.addEventListener('click', function() {
-        var collapsed = children.classList.toggle('is-collapsed');
-        title.classList.toggle('is-collapsed');
-        localStorage.setItem(storageKey, collapsed ? '1' : '0');
-      });
-    })(folders[i]);
+        title.addEventListener('click', function() {
+          var collapsed = children.classList.toggle('is-collapsed');
+          title.classList.toggle('is-collapsed');
+          localStorage.setItem(storageKey, collapsed ? '1' : '0');
+        });
+      })(folders[i]);
+    }
   }
+
+  initNav();
+  window.__initNav = initNav;
 
   // Mobile sidebar toggle
   var toggle = document.querySelector('.sidebar-toggle');
@@ -1531,7 +1535,6 @@ const SIDEBAR_JS = `(function() {
 `
 
 const SEARCH_JS = `(function() {
-  var pathToRoot = window.__PATH_TO_ROOT__;
   var overlay = document.getElementById('search-overlay');
   var input = document.getElementById('search-input');
   var results = document.getElementById('search-results');
@@ -1583,7 +1586,7 @@ const SEARCH_JS = `(function() {
       div.appendChild(titleDiv);
       div.appendChild(previewDiv);
       div.addEventListener('click', function() {
-        var href = pathToRoot + item.s + '.html';
+        var href = window.__PATH_TO_ROOT__ + item.s + '.html';
         if (window.__siteRouter) window.__siteRouter(href);
         else window.location.href = href;
       });
@@ -1695,7 +1698,15 @@ const ROUTER_JS = `(function() {
       // Scroll to top
       window.scrollTo(0, 0);
 
-      // Re-init copy buttons for new content
+      // Update pathToRoot from the new page's script
+      var scripts = doc.querySelectorAll('script');
+      for (var si = 0; si < scripts.length; si++) {
+        var m = scripts[si].textContent.match(/window\\.__PATH_TO_ROOT__\\s*=\\s*("(?:[^"\\\\]|\\\\.)*")/);
+        if (m) { window.__PATH_TO_ROOT__ = JSON.parse(m[1]); break; }
+      }
+
+      // Re-init nav collapse handlers and copy buttons
+      if (window.__initNav) window.__initNav();
       if (window.__initCopyButtons) window.__initCopyButtons();
 
       // Close mobile sidebar
