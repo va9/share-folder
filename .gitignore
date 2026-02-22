@@ -33,6 +33,9 @@ docs/_site/
 # Server build output
 app/dist/
 
+# Fly.io config (contains app-specific settings)
+app/fly.toml
+
 # Planning docs
 planning/
 
