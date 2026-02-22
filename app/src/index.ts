@@ -16,7 +16,7 @@ const app = new Hono()
 
 // Middleware
 app.use('*', logger())
-app.use('/v1/*', bodyLimit({ maxSize: 50 * 1024 * 1024 })) // 50 MB max request body
+app.use('/v1/*', bodyLimit({ maxSize: 64 * 1024 * 1024 })) // 64 MB max (20 files × 2 MB × base64 overhead)
 
 // Health check
 app.get('/health', (c) => c.json({ ok: true }))
