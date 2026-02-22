@@ -361,7 +361,11 @@ function serveSiteOrExpired (slug: string, filePath: string, site: Site, c: Cont
     if (botResponse) return botResponse
   }
 
-  return new Response(result.content as any, { status: 200, headers: { 'Content-Type': result.mimeType } })
+  const headers: Record<string, string> = { 'Content-Type': result.mimeType }
+  if (result.mimeType.includes('text/html')) {
+    headers['Content-Security-Policy'] = "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'"
+  }
+  return new Response(result.content as any, { status: 200, headers })
 }
 
 /** Public site-serving routes — single catch-all with disambiguation */

@@ -39,7 +39,8 @@ export class SiteTemplate {
   <meta property="og:description" content="${this.escapeHtml(data.siteTitle)}">
   <meta property="og:site_name" content="${this.escapeHtml(data.siteTitle)}">
   <meta property="og:type" content="website">${data.siteBaseUrl ? `
-  <meta property="og:url" content="${this.escapeHtml(data.siteBaseUrl)}/${data.currentSlug}.html">` : ''}
+  <meta property="og:url" content="${this.escapeHtml(data.siteBaseUrl)}/${data.currentSlug}.html">
+  <link rel="canonical" href="${this.escapeHtml(data.siteBaseUrl)}/${data.currentSlug}.html">` : ''}
   <script>(function(){var t=localStorage.getItem('site-theme');if(!t&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)t='dark';if(t)document.documentElement.setAttribute('data-theme',t)})()</script>
   <style>${data.css}</style>
   <link rel="stylesheet" href="${data.pathToRoot}assets/site.css">
@@ -148,7 +149,8 @@ export class SiteTemplate {
   <meta property="og:description" content="${this.escapeHtml(data.siteTitle)}">
   <meta property="og:site_name" content="${this.escapeHtml(data.siteTitle)}">
   <meta property="og:type" content="website">${data.siteBaseUrl ? `
-  <meta property="og:url" content="${this.escapeHtml(data.siteBaseUrl)}/">` : ''}
+  <meta property="og:url" content="${this.escapeHtml(data.siteBaseUrl)}/">
+  <link rel="canonical" href="${this.escapeHtml(data.siteBaseUrl)}/">` : ''}
   <script>(function(){var t=localStorage.getItem('site-theme');if(!t&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)t='dark';if(t)document.documentElement.setAttribute('data-theme',t)})()</script>
   <style>${data.css}</style>
   <link rel="stylesheet" href="assets/site.css">

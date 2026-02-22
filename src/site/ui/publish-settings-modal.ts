@@ -63,9 +63,9 @@ export class PublishSettingsModal extends Modal {
       .addButton(btn => btn
         .setButtonText('Publish')
         .setCta()
-        .onClick(() => {
+        .onClick(async () => {
           this.plugin.settings.folderSettings[this.folder.path] = { ...this.settings }
-          this.plugin.saveSettings()
+          await this.plugin.saveSettings()
           this.close()
           this.onPublish({ ...this.settings })
         }))
