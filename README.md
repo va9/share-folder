@@ -109,9 +109,9 @@ The **Shared folders** section lists all your published folders with buttons to 
 
 | Type | URL |
 |------|-----|
-| Default | `https://opennotes.io/<prefix>/<folder>/` |
-| Vanity | `https://opennotes.io/<vanity>/<folder>/` |
-| Encrypted | `https://opennotes.io/<vanity>/<folder>/#<key>` |
+| Default | `https://your-server/<prefix>/<folder>/` |
+| Vanity | `https://your-server/<vanity>/<folder>/` |
+| Encrypted | `https://your-server/<vanity>/<folder>/#<key>` |
 
 - `<prefix>` is the first 8 hex characters of your user ID (auto-generated)
 - `<vanity>` is your chosen slug (3–32 chars, alphanumeric + hyphens)
@@ -142,7 +142,7 @@ By default, the plugin publishes to [opennotes.io](https://opennotes.io), a free
 |-------|-------|
 | Shares per account | 100 |
 | Files per share | 5,000 |
-| Max file size | 10 MB |
+| Max file size | 2 MB |
 
 ### Self-hosting
 
@@ -180,7 +180,7 @@ fly launch
 fly deploy
 ```
 
-The included `fly.toml` and `Dockerfile` handle the rest.
+The included `Dockerfile` handles the build. `fly launch` will generate a `fly.toml` for your app.
 
 ## How it works
 
