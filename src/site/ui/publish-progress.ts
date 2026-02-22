@@ -6,16 +6,19 @@ export class PublishProgressModal extends Modal {
   private detailEl: HTMLElement
   private barFill: HTMLElement
   private resultEl: HTMLElement
+  private publishing = true
 
   constructor (app: App) {
     super(app)
   }
 
+  close () {
+    if (this.publishing) return
+    super.close()
+  }
+
   onOpen () {
-    const { contentEl, modalEl } = this
-    // Prevent closing by clicking outside while publishing
-    this.containerEl.style.pointerEvents = 'none'
-    modalEl.style.pointerEvents = 'auto'
+    const { contentEl } = this
     contentEl.empty()
     contentEl.createEl('h2', { text: 'Publishing folder...' })
 
@@ -66,7 +69,7 @@ export class PublishProgressModal extends Modal {
   }
 
   private allowClose () {
-    this.containerEl.style.pointerEvents = ''
+    this.publishing = false
   }
 
   setResult (url: string) {
