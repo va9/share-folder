@@ -40,6 +40,7 @@ export function arrayBufferToBase64 (buffer: ArrayBuffer): string {
 }
 
 export function base64ToArrayBuffer (base64: string) {
+  while (base64.length % 4 !== 0) base64 += '='
   return Uint8Array.from(window.atob(base64), (c) => c.charCodeAt(0)).buffer
 }
 
@@ -93,7 +94,7 @@ export async function encryptString (plaintext: string, existingKey?: string): P
 
   return {
     ciphertext,
-    key: masterKeyToString(key as ArrayBuffer).slice(0, 43)
+    key: masterKeyToString(key as ArrayBuffer)
   }
 }
 

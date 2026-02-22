@@ -5,5 +5,5 @@
 	"minAppVersion": "0.15.0",
 	"description": "Share an entire folder as a navigable website with sidebar navigation, backlinks, search, and tag pages.",
 	"author": "Arya",
-	"isDesktopOnly": false
+	"isDesktopOnly": true
 }
