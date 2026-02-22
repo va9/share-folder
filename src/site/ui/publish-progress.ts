@@ -7,18 +7,32 @@ export class PublishProgressModal extends Modal {
   private barFill: HTMLElement
   private resultEl: HTMLElement
   private publishing = true
+  private abortController = new AbortController()
+
+  /** Signal that callers can check to stop work */
+  get signal (): AbortSignal { return this.abortController.signal }
+  get cancelled (): boolean { return this.abortController.signal.aborted }
 
   constructor (app: App) {
     super(app)
   }
 
-  close () {
-    if (this.publishing) return
-    super.close()
+  onClose () {
+    if (this.publishing) {
+      this.abortController.abort()
+    }
   }
 
   onOpen () {
     const { contentEl } = this
+
+    // Block backdrop clicks from closing, but allow X button and ESC
+    this.containerEl.addEventListener('click', (e) => {
+      if (this.publishing && e.target === this.containerEl) {
+        e.stopImmediatePropagation()
+      }
+    }, true)
+
     contentEl.empty()
     contentEl.createEl('h2', { text: 'Publishing folder...' })
 

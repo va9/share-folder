@@ -143,27 +143,30 @@ export class SitePublisher {
     const activeLeaf = this.app.workspace.getLeaf(false)
     const renderLeaf = this.app.workspace.getLeaf(true)
 
-    for (let i = 0; i < publishableFiles.length; i++) {
-      const file = publishableFiles[i]
-      this.progress.setProgress(i + 1, publishableFiles.length)
-      this.progress.setDetail(file.basename)
+    try {
+      for (let i = 0; i < publishableFiles.length; i++) {
+        if (this.progress.cancelled) throw new Error('Cancelled')
+        const file = publishableFiles[i]
+        this.progress.setProgress(i + 1, publishableFiles.length)
+        this.progress.setDetail(file.basename)
 
-      const html = await this.renderNote(file, renderLeaf)
-      const meta = this.app.metadataCache.getFileCache(file)
-      const title = this.getTitle(file, meta)
-      const tags = this.getTags(meta)
+        const html = await this.renderNote(file, renderLeaf)
+        const meta = this.app.metadataCache.getFileCache(file)
+        const title = this.getTitle(file, meta)
+        const tags = this.getTags(meta)
 
-      renderedPages.push({
-        file,
-        slug: pathToSlug.get(file.path)!,
-        title,
-        html,
-        tags
-      })
+        renderedPages.push({
+          file,
+          slug: pathToSlug.get(file.path)!,
+          title,
+          html,
+          tags
+        })
+      }
+    } finally {
+      renderLeaf.detach()
+      this.app.workspace.setActiveLeaf(activeLeaf)
     }
-
-    renderLeaf.detach()
-    this.app.workspace.setActiveLeaf(activeLeaf)
 
     // 7. Extract and process CSS (once for the whole site)
     this.progress.setStage('Processing CSS...')
@@ -175,6 +178,7 @@ export class SitePublisher {
     const processedAssets: Array<{ sitePath: string; base64: string; filetype: string }> = []
     let assetIdx = 0
     for (const [vaultPath, assetFile] of assetFiles) {
+      if (this.progress.cancelled) throw new Error('Cancelled')
       assetIdx++
       let sitePath = assetPathMap.get(vaultPath)
       if (!sitePath) continue
@@ -489,22 +493,34 @@ export class SitePublisher {
     this.progress = new PublishProgressModal(this.app)
     this.progress.open()
 
+    const prefix = this.plugin.settings.uid.slice(0, 8)
+    const folderSlug = this.resolveSlug()
+    const slug = `${prefix}/${folderSlug}`
+    let uploadStarted = false
+
     try {
       const encrypted = this.folderSettings?.encrypted ?? this.plugin.settings.siteEncrypted
       const vanity = this.plugin.settings.siteVanitySlug
-      const prefix = this.plugin.settings.uid.slice(0, 8)
-      const folderSlug = this.resolveSlug()
       const base = vanity || prefix
       const siteBaseUrl = `${this.plugin.settings.server}/${base}/${folderSlug}`
       const siteFiles = await this.buildSite(encrypted, siteBaseUrl)
+      uploadStarted = true
       await this.uploadSite(siteFiles)
     } catch (e) {
+      if (e?.message === 'Cancelled') {
+        // Delete partial upload so sensitive content doesn't remain on server
+        if (uploadStarted) {
+          try { await this.plugin.api.deleteSite(slug) } catch {}
+        }
+        return
+      }
       console.error('Site publishing error:', e)
       this.progress.setError('Publishing failed', e)
     }
   }
 
   private async uploadSite (siteFiles: SiteFile[], isRetry = false): Promise<void> {
+    if (this.progress.cancelled) throw new Error('Cancelled')
     this.progress.setStage('Uploading site...')
     this.progress.setProgress(0, siteFiles.length)
 
@@ -612,6 +628,7 @@ export class SitePublisher {
       this.progress.setProgress(0, siteFiles.length)
 
       for (let i = 0; i < siteFiles.length; i++) {
+        if (this.progress.cancelled) throw new Error('Cancelled')
         const file = siteFiles[i]
         const filePath = path.join(outputDir, file.path)
         const dir = path.dirname(filePath)
@@ -636,6 +653,7 @@ export class SitePublisher {
 
       this.progress.setResult('file://' + outputDir + '/index.html')
     } catch (e) {
+      if (e?.message === 'Cancelled') return
       console.error('Site publishing error:', e)
       this.progress.setError('Publishing to disk failed', e)
     }
