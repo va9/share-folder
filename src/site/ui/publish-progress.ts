@@ -12,7 +12,10 @@ export class PublishProgressModal extends Modal {
   }
 
   onOpen () {
-    const { contentEl } = this
+    const { contentEl, modalEl } = this
+    // Prevent closing by clicking outside while publishing
+    this.containerEl.style.pointerEvents = 'none'
+    modalEl.style.pointerEvents = 'auto'
     contentEl.empty()
     contentEl.createEl('h2', { text: 'Publishing folder...' })
 
@@ -62,7 +65,12 @@ export class PublishProgressModal extends Modal {
     if (this.detailEl) this.detailEl.setText(detail)
   }
 
+  private allowClose () {
+    this.containerEl.style.pointerEvents = ''
+  }
+
   setResult (url: string) {
+    this.allowClose()
     if (this.resultEl) {
       this.resultEl.empty()
       const heading = this.contentEl.querySelector('h2')
@@ -86,6 +94,7 @@ export class PublishProgressModal extends Modal {
   }
 
   setError (message: string, error?: any) {
+    this.allowClose()
     if (this.resultEl) {
       this.resultEl.empty()
       const heading = this.contentEl.querySelector('h2')
