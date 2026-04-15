@@ -27,6 +27,69 @@ app.get('/', (c) => c.redirect('https://github.com/va9/share-folder'))
 // Admin UI shortcut
 app.get('/admin', (c) => c.redirect('/v1/admin/ui'))
 
+// Obsidian URI redirector — turns HTTPS links into obsidian:// URIs
+// so that obsidian:// links work from apps that strip non-HTTP schemes (Telegram, etc.)
+app.get('/open-in-app', (c) => {
+  const raw = c.req.query('url')
+
+  if (!raw) {
+    c.status(400)
+    return c.text(
+      'Obsidian URI Redirector\n\n' +
+      'Usage: https://opennotes.io/open-in-app?url=obsidian%3A%2F%2Fopen%3Fvault%3DMy%2520Vault%26file%3Dpath%2Fto%2Fnote.md\n\n' +
+      'Error: Missing or invalid URL. Only obsidian:// URIs are accepted.'
+    )
+  }
+
+  // Decode and validate scheme
+  let decoded: string
+  try {
+    decoded = decodeURIComponent(raw)
+  } catch {
+    c.status(400)
+    return c.text(
+      'Obsidian URI Redirector\n\n' +
+      'Usage: https://opennotes.io/open-in-app?url=obsidian%3A%2F%2Fopen%3Fvault%3DMy%2520Vault%26file%3Dpath%2Fto%2Fnote.md\n\n' +
+      'Error: Missing or invalid URL. Only obsidian:// URIs are accepted.'
+    )
+  }
+
+  if (!decoded.startsWith('obsidian://')) {
+    c.status(400)
+    return c.text(
+      'Obsidian URI Redirector\n\n' +
+      'Usage: https://opennotes.io/open-in-app?url=obsidian%3A%2F%2Fopen%3Fvault%3DMy%2520Vault%26file%3Dpath%2Fto%2Fnote.md\n\n' +
+      'Error: Missing or invalid URL. Only obsidian:// URIs are accepted.'
+    )
+  }
+
+  // Reject URIs containing HTML/JS injection attempts
+  if (/[<>"']/.test(decoded)) {
+    c.status(400)
+    return c.text(
+      'Obsidian URI Redirector\n\n' +
+      'Usage: https://opennotes.io/open-in-app?url=obsidian%3A%2F%2Fopen%3Fvault%3DMy%2520Vault%26file%3Dpath%2Fto%2Fnote.md\n\n' +
+      'Error: Missing or invalid URL. Only obsidian:// URIs are accepted.'
+    )
+  }
+
+  // HTML-escape for safe embedding (belt-and-suspenders after the regex reject above)
+  const safe = decoded
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+
+  return c.html(
+    '<!DOCTYPE html>' +
+    '<html><head><meta charset="utf-8"><title>Opening in Obsidian…</title></head>' +
+    '<body><p>Opening in Obsidian…</p>' +
+    `<script>window.location.href="${safe}";</script>` +
+    '</body></html>'
+  )
+})
+
 // Routes
 app.route('/v1/account', account)
 app.route('/v1/site', publishRouter)
