@@ -73,19 +73,15 @@ app.get('/open-in-app', (c) => {
     )
   }
 
-  // HTML-escape for safe embedding (belt-and-suspenders after the regex reject above)
-  const safe = decoded
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
+  // JSON.stringify handles JS string escaping (quotes, backslashes, etc.)
+  // and is the correct way to embed a value inside a <script> tag
+  const safe = JSON.stringify(decoded)
 
   return c.html(
     '<!DOCTYPE html>' +
     '<html><head><meta charset="utf-8"><title>Opening in Obsidian…</title></head>' +
     '<body><p>Opening in Obsidian…</p>' +
-    `<script>window.location.href="${safe}";</script>` +
+    `<script>window.location.href=${safe};</script>` +
     '</body></html>'
   )
 })
