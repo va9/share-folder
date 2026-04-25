@@ -29,10 +29,14 @@ app.get('/admin', (c) => c.redirect('/v1/admin/ui'))
 
 // Obsidian URI redirector — turns HTTPS links into obsidian:// URIs
 // so that obsidian:// links work from apps that strip non-HTTP schemes (Telegram, etc.)
+//
+// Logic is client-side: server-side decodeURIComponent would collapse literal
+// '&' (encoded as %26 inside an obsidian URI value) and structural '&' (param
+// separator) into the same character, corrupting file paths that contain '&'.
+// URLSearchParams.get() in the browser only peels off one layer of decoding,
+// which preserves the inner %26 so Obsidian can parse params correctly.
 app.get('/open-in-app', (c) => {
-  const raw = c.req.query('url')
-
-  if (!raw) {
+  if (!c.req.query('url')) {
     c.status(400)
     return c.text(
       'Obsidian URI Redirector\n\n' +
@@ -40,49 +44,19 @@ app.get('/open-in-app', (c) => {
       'Error: Missing or invalid URL. Only obsidian:// URIs are accepted.'
     )
   }
-
-  // Decode and validate scheme
-  let decoded: string
-  try {
-    decoded = decodeURIComponent(raw)
-  } catch {
-    c.status(400)
-    return c.text(
-      'Obsidian URI Redirector\n\n' +
-      'Usage: https://opennotes.io/open-in-app?url=obsidian%3A%2F%2Fopen%3Fvault%3DMy%2520Vault%26file%3Dpath%2Fto%2Fnote.md\n\n' +
-      'Error: Missing or invalid URL. Only obsidian:// URIs are accepted.'
-    )
-  }
-
-  if (!decoded.startsWith('obsidian://')) {
-    c.status(400)
-    return c.text(
-      'Obsidian URI Redirector\n\n' +
-      'Usage: https://opennotes.io/open-in-app?url=obsidian%3A%2F%2Fopen%3Fvault%3DMy%2520Vault%26file%3Dpath%2Fto%2Fnote.md\n\n' +
-      'Error: Missing or invalid URL. Only obsidian:// URIs are accepted.'
-    )
-  }
-
-  // Reject URIs containing HTML/JS injection attempts
-  if (/[<>"']/.test(decoded)) {
-    c.status(400)
-    return c.text(
-      'Obsidian URI Redirector\n\n' +
-      'Usage: https://opennotes.io/open-in-app?url=obsidian%3A%2F%2Fopen%3Fvault%3DMy%2520Vault%26file%3Dpath%2Fto%2Fnote.md\n\n' +
-      'Error: Missing or invalid URL. Only obsidian:// URIs are accepted.'
-    )
-  }
-
-  // JSON.stringify handles JS string escaping (quotes, backslashes, etc.)
-  // and is the correct way to embed a value inside a <script> tag
-  const safe = JSON.stringify(decoded)
 
   return c.html(
-    '<!DOCTYPE html>' +
-    '<html><head><meta charset="utf-8"><title>Opening in Obsidian…</title></head>' +
-    '<body><p>Opening in Obsidian…</p>' +
-    `<script>window.location.href=${safe};</script>` +
-    '</body></html>'
+    '<!DOCTYPE html>\n' +
+    '<html>\n' +
+    '<head><meta charset="utf-8"><title>Opening in Obsidian…</title></head>\n' +
+    '<body>\n' +
+    '<p>Opening in Obsidian…</p>\n' +
+    '<script>\n' +
+    "  const url = new URLSearchParams(window.location.search).get('url');\n" +
+    "  if (url && url.startsWith('obsidian://')) window.location.href = url;\n" +
+    '</script>\n' +
+    '</body>\n' +
+    '</html>\n'
   )
 })
 
